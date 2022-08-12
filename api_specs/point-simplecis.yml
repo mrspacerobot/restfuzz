@@ -1,0 +1,483 @@
+openapi: "3.0.1"
+info:
+  title: "point-simplecis"
+  description: "point cis api"
+  version: "0.5.4"
+servers:
+  - url: "https://sb.point.horizondev.cloud/api/v1"
+    description: DEV
+  - url: "https://sb.int.point.horizonint.cloud/api/v1"
+    description: INT
+  - url: "https://sb.product-int.point.horizonint.cloud/api/v1"
+    description: PRODUCT-INT
+  - url: "https://sb.point.horizoncloud.io/api/v1"
+    description: PROD
+security:
+  - bearerAuth: [ ]
+paths:
+  /points:
+    post:
+      tags:
+        - "Point Definitions"
+      summary: "Create or update a point with definition"
+      description: "Create or update a point for particular device"
+      requestBody:
+        description: Request body to create a point
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/CreateOrUpdatePointRequestBody'
+        required: true
+      responses:
+        202:
+          description: "Point created"
+          content: {}
+        400:
+          description: "One or more of the required properties are missing and/or invalid"
+          content: {}
+        401:
+          description: "Unauthorized user, the JWT Bearer Token is either missing or invalid"
+          content: {}
+        403:
+          description: "Forbidden, the user is not granted access to the requested resource"
+          content: {}
+        500:
+          description: "Internal Error"
+          content: {}
+  /points/{pointID}:
+    get:
+      tags:
+        - "Point Definitions"
+      summary: "Get point definition and its LastValue by pointId."
+      description: "Retrieve a point definition by id and its lastValue, if any."
+      parameters:
+        - name: "pointID"
+          in: "path"
+          description: "Point identifier"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        404:
+          description: "Requested entity does not exist"
+          content: {}
+        200:
+          description: "Point with its LastValue or null, if there isn't any value."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PointDefinitionWithLastValueResponse"
+        400:
+          description: "One or more of the required parameters are missing and/or invalid"
+          content: {}
+        401:
+          description: "Unauthorized user, the JWT Bearer Token is either missing or invalid"
+          content: {}
+        403:
+          description: "Forbidden, the user is not granted access to the requested resource"
+          content: {}
+        500:
+          description: "Internal Error"
+          content: {}
+    delete:
+      tags:
+        - "Point Definitions"
+      summary: "Delete point by pointID"
+      description: "Delete a point by pointID"
+      parameters:
+        - name: "pointID"
+          in: "path"
+          description: "Point identifier"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        404:
+          description: "Requested entity does not exist"
+          content: {}
+        202:
+          description: "Point deleted"
+          content: {}
+        401:
+          description: "Unauthorized user, the JWT Bearer Token is either missing or invalid"
+          content: {}
+        403:
+          description: "Forbidden, the user is not granted access to the requested resource"
+          content: {}
+        500:
+          description: "Internal Error"
+          content: {}
+  /points/{pointID}/cov:
+    post:
+      tags:
+        - "Point Values"
+      summary: "Push values for given point"
+      description: |
+        Push one or more values for given point in a batch. 
+        
+        Only one COV per second will be stored. COVs might be dropped if there are timestamp conflicts: If there is already a COV for the same second and the new arrival has an earlier timestamp 
+        (when considering milliseconds or also if it has the same timestamp) then that COV is not stored and it is not streamed. 
+        For example, the following COVs might arrive:
+        1. 2022-07-11T11:11:30.333
+        1. 2022-07-11T11:11:30.222 
+        1. 2022-07-11T11:11:30.333 
+        1. 2022-07-11T11:11:30.444  
+
+        The first one is accepted (it's the first for second "30"), it's temporarily stored and streamed. 
+        The second one is dropped as it's earlier than the first. 
+        The third is dropped because it's the same timestamp as the first. 
+        The fourth is accepted again as it's later and it replaces the first in storage. 
+        The indices of dropped COVs are listed in the response. 
+
+      parameters:
+        - name: "pointID"
+          in: "path"
+          description: "Point identifier"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        description: Request body to publish a value
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/CreateCOVBatchRequestBody'
+        required: true
+      responses:
+        202:
+          description: "Accepted, all COVs have been stored and streamed successfully except the ones with timestamp conflicts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCOVsResponse"
+        400:
+          description: "One or more of the required parameters are missing and/or invalid or request cannot be validated"
+          content: { }
+        401:
+          description: "Unauthorized user, the JWT Bearer Token is either missing or invalid"
+          content: { }
+        403:
+          description: "Forbidden, the user is not granted access to the requested resource"
+          content: { }
+        413:
+          description: "Large entity, there are more COVs than the allowed limit of 100 COVs"
+          content: { }
+        500:
+          description: "Internal Error, for unexpected storage or streaming problems. Some of the provided COVs might have been pushed successfully."
+          content: { }
+  /devices/{deviceID}/points:
+    get:
+      tags:
+        - "Point Definitions"
+      summary: "Get point definitions including last value for given device"
+      description: >
+        "Retrieve a list of points - with their value - that belong to
+        the given device (and not to devices behind this device)."
+      parameters:
+        - name: "PaginationCursor"
+          in: "header"
+          description: >
+            "Optional parameter for retrieving pages of a previous query
+            with a 'paginationCursor' field in the response body"
+          schema:
+            type: "string"
+        - name: "deviceID"
+          in: "path"
+          description: "Device identifier"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        404:
+          description: "Requested entity does not exist"
+          content: {}
+        200:
+          description: >
+            "List of points - with their value - that belong to the given
+            device id (and not to devices behind this device)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PointsByDeviceResponse"
+        400:
+          description: "One or more of the required parameters are missing and/or invalid"
+          content: {}
+        401:
+          description: "Unauthorized user, the JWT Bearer Token is either missing or invalid"
+          content: {}
+        500:
+          description: "Internal Error"
+          content: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PointDefinitionWithLastValueResponse:
+      $ref: "#/components/schemas/PointDefinitionWithLastValue"
+    PointsByDeviceResponse:
+      required:
+        - "points"
+      type: "object"
+      properties:
+        paginationCursor:
+          type: "string"
+        points:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/PointDefinitionWithLastValue"
+    PointDefinitionWithLastValue:
+      type: "object"
+      properties:
+        createdAt:
+          type: "string"
+          format: "date-time"
+        dataType:
+          type: "string"
+          description: pre-defined Horizon data types.
+          enum: [number, integer, boolean, string]
+        description:
+          type: "string"
+        deviceId:
+          type: "string"
+          description: If a deviceId is provided, the new point will also be added to the root point group of that device.
+        id:
+          type: "string"
+        isActive:
+          type: "boolean"
+        isDeleted:
+          type: "boolean"
+        lastUpdatedAt:
+          type: "string"
+          format: "date-time"
+        name:
+          type: "string"
+        parentId:
+          type: "string"
+        source:
+          required:
+            - "localPointRef"
+            - "namespace"
+            - "namespaceType"
+            - "type"
+          type: "object"
+          properties:
+            namespace:
+              type: "string"
+            localDeviceRef:
+              type: "string"
+              example: "198019dd-9f83-4bfc-babc-34a9823779fb"
+            type:
+              type: "string"
+            localPointRef:
+              type: "string"
+              example: "7d3a656f-7e56-525d-b335-a05176cff4bd"
+            namespaceType:
+              type: "string"
+        systemAttributes:
+          type: "object"
+        tags:
+          type: "object"
+        valueType:
+          type: "string"
+        unit:
+          type: string
+          description: "If set, MUST be one of https://qudt.org/2.1/vocab/unit units, prefixed 'qudt:'."
+          example: "qudt:DEG_C"
+        enum:
+          type: object
+          description: "Object holding enum values (key) and corresponding description object. The key type SHOULD correspond to the dataType as string. Description object: Is an object that MUST contain at least one property 'label'. Could be extended later with optional properties to enable things like translation keys, etc."
+          example: {
+            "on": {"label": "On"},
+            "off": {"label": "Off"},
+            "auto": {"label": "Auto"}
+          }
+        minimum:
+          type: string
+          description: "Lowest value (inclusive), applicable to point.dataType number and integer."
+          example: "5"
+        maximum:
+          type: string
+          description: "Highest value (inclusive), applicable to point.dataType number and integer."
+          example: "55.9"
+        precision:
+          type: string
+          description: "Indicates the smallest recognizable change of a number value, applicable to point.dataType number and integer. If a precision is provided it must be > 0."
+          example: "0.1"
+        commandingSemantic:
+          type: string
+          description: "If not set, point value cannot be set / commanded"
+          enum: [writeable, commandable]
+        function:
+          type: string
+          description: "Relates to the function of the point. The definition of the function types is taken from haystack."
+          enum: [sensor, cmd, sp]
+        schemaVersion:
+          type: integer
+          description: "Defines the schema version of the point description (not a version of the point instance). On updates it increments monotonously (no semantic versioning). Current version is defined as 'schemaVersion == 1'"
+          enum: [1]
+        lastValue:
+          type: "object"
+          properties:
+            createdAt:
+              type: "string"
+              format: "date-time"
+            attributes:
+              type: "object"
+              description: "optional, arbitrary attributes. These must not be interpreted nor evaluated by anything else than the creator of this cov, hence no schema available."
+            value:
+              type: "object"
+    CreateOrUpdatePointRequestBody:
+      type: object
+      required:
+        - namespace
+        - namespaceType
+        - deviceId
+        - data
+      properties:
+        namespace:
+          type: string
+          description: mandatory namespace of the local point, typically a uuid
+          example: 50210ddd-1319-4af9-9be8-47aa77fdd292
+        namespaceType:
+          type: string
+          description: declaring what the namespace actually is
+          enum:
+            - app
+            - device
+          example: app
+        deviceId:
+          type: string
+          description: the id of the gateway, typically a UUID
+          example: 2c09f497-d75d-4b39-ab09-efc5bb72ebb6
+        data:
+          type: object
+          description: the actual point definition
+          required:
+            - localPointRef
+            - localDeviceRef
+            - name
+            - dataType
+            - sourceType
+          properties:
+            localPointRef:
+              type: string
+              description: restricted localPointRef
+              example: "7d3a656f-7e56-525d-b335-a05176cff4bd"
+            localDeviceRef:
+              type: string
+              description: the local device reference, of the device "owning" the point. If the point is on the gateway, this is nil (empty or not present).
+              example: "198019dd-9f83-4bfc-babc-34a9823779fb"
+            name:
+              type: string
+              example: "Dyn_BinObj_BV010"
+            description:
+              type: string
+              nullable: true
+              description: optional description of the point
+              example: "Dyn_BinObj_BV010"
+            activeOnCreate:
+              type: boolean
+              nullable: true
+              description: optional, will be used to set isActive in case it results in a point create.
+            dataType:
+              type: string
+              description: pre-defined Horizon data types.
+              enum: [number, integer, boolean, string]
+            sourceType:
+              type: string
+              description: "Identifies the source this point originates from. Please make sure you use your own vertical custom source type. It must be not 'PointCIS', 'ClimatixIC' or 'PointNB'."
+            tags:
+              type: object
+              nullable: true
+              description: types defined by Horizon.
+            systemAttributes:
+              type: object
+              nullable: true
+              description: "optional, arbitrary attributes. These must not be interpreted nor evaluated by anything else than the creator of this points, hence no schema available."
+              example: {
+                "msibConfig": {
+                  "AddressTypeDHCP": "DHCP",
+                  "BACnetDeviceInstance": "211"
+                }
+              }
+            unit:
+              type: string
+              description: "If set, MUST be one of http://qudt.org/2.1/vocab/unit units, prefixed 'qudt:'. It will not be validated by the cloud."
+              example: "qudt:DEG_C"
+            enum:
+              type: object
+              description: "Object holding enum values (key) and corresponding description object. The key type SHOULD correspond to the dataType as string. Description object: Is an object that MUST contain at least one property 'label'. Could be extended later with optional properties to enable things like translation keys, etc. It will not be validated by the cloud."
+              example: {
+                "on": {"label": "On"},
+                "off": {"label": "Off"},
+                "auto": {"label": "Auto"}
+              }
+            minimum:
+              type: string
+              description: "Lowest value (inclusive), applicable to point.dataType number and integer. Value range will not be validated by the cloud."
+              example: "5"
+            maximum:
+              type: string
+              description: "Highest value (inclusive), applicable to point.dataType number and integer. Value range will not be validated by the cloud."
+              example: "55"
+            precision:
+              type: string
+              description: "Indicates the smallest recognizable change of a number value, applicable to point.dataType number and integer. If a precision is provided it must be > 0. Value range will not be validated by the cloud."
+              example: "1"
+            commandingSemantic:
+              type: string
+              description: "If not set, point value cannot be set / commanded. It will not be validated by the cloud."
+              enum: [writeable, commandable]
+            function:
+              type: string
+              description: "Relates to the function of the point. The definition of the function types is taken from haystack. It will not be validated by the cloud."
+              enum: [sensor, cmd, sp]
+            schemaVersion:
+              type: integer
+              description: "Defines the schema version of the point description (not a version of the point instance). On updates it increments monotonously (no semantic versioning). Current version is defined as 'schemaVersion == 1'."
+              enum: [1]
+    CreateCOVBatchRequestBody:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - values
+          properties:
+            values:
+              type: "array"
+              items:
+                type: object
+                required:
+                  - timestamp
+                  - value
+                properties:
+                  timestamp:
+                    type: "string"
+                    format: "date-time"
+                  value:
+                    type: string
+                  attributes:
+                    type: object
+                    description: "optional, arbitrary attributes. These must not be interpreted nor evaluated by anything else than the creator of this cov, hence no schema available."
+                    nullable: true
+                  targetValue:
+                    type: "string"
+                    description: "MUST be present if point.commandingSemantic == commanding AND a value is set for cloud defined priority. It will not be validated by the cloud."
+                  qualityOfValue:
+                    type: "integer"
+                    description: "0: Good, 1: Bad - Generic error, 2: Bad - Communication error, 3: Bad - Configuration error. It will not be validated by the cloud."
+                    enum: [0, 1, 2, 3]
+    CreateCOVsResponse:
+      type: "object"
+      properties:
+        timestampConflicts:
+          type: "array"
+          items:
+            type: integer
+            example: 42
